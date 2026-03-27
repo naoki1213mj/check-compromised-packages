@@ -1,14 +1,16 @@
 # ============================================================
-# LiteLLM サプライチェーン攻撃 チェックスクリプト (Windows / PowerShell)
+# LiteLLM / Telnyx サプライチェーン攻撃 チェックスクリプト (Windows / PowerShell)
 # 対象: litellm v1.82.7 / v1.82.8 (2026-03-24 公開、TeamPCP による侵害)
+#       telnyx  v4.87.1 / v4.87.2 (2026-03-27 公開、TeamPCP による侵害)
 # 参考: https://docs.litellm.ai/blog/security-update-march-2026
 #       https://futuresearch.ai/blog/litellm-pypi-supply-chain-attack/
+#       https://futuresearch.ai/blog/telnyx-compromise/
 #
 # 使い方:
-#   .\check_litellm_win.ps1                                    # 既定の共通インストール先をスキャン
-#   .\check_litellm_win.ps1 -ScanDirs "C:\dev"                 # 特定フォルダ
-#   .\check_litellm_win.ps1 -ScanDirs "$env:USERPROFILE","D:\projects"
-#   .\check_litellm_win.ps1 -SkipDocker                        # Docker スキャンを省略
+#   .\check_compromised_packages_win.ps1                                    # 既定の共通インストール先をスキャン
+#   .\check_compromised_packages_win.ps1 -ScanDirs "C:\dev"                 # 特定フォルダ
+#   .\check_compromised_packages_win.ps1 -ScanDirs "$env:USERPROFILE","D:\projects"
+#   .\check_compromised_packages_win.ps1 -SkipDocker                        # Docker スキャンを省略
 # ============================================================
 
 param(
@@ -17,8 +19,10 @@ param(
 )
 
 $found = $false
-$activeChecked = $false
-$BAD_VERSIONS = @("1.82.7", "1.82.8")
+$litellmActiveChecked = $false
+$telnyxActiveChecked = $false
+$BAD_LITELLM_VERSIONS = @("1.82.7", "1.82.8")
+$BAD_TELNYX_VERSIONS = @("4.87.1", "4.87.2")
 
 function Add-ScanDir {
     param(
@@ -64,13 +68,19 @@ function Get-DefaultScanDirs {
     return $dirs.ToArray()
 }
 
-function Test-BadVersion {
+function Test-BadLitellmVersion {
     param([string]$Version)
-    return $Version -in $BAD_VERSIONS
+    return $Version -in $BAD_LITELLM_VERSIONS
+}
+
+function Test-BadTelnyxVersion {
+    param([string]$Version)
+    return $Version -in $BAD_TELNYX_VERSIONS
 }
 
 function Show-InstalledVersion {
     param(
+        [string]$PackageName,
         [string]$Label,
         [string[]]$CommandParts
     )
@@ -84,32 +94,44 @@ function Show-InstalledVersion {
             $commandArgs = $CommandParts[1..($CommandParts.Count - 1)]
         }
 
-        $output = & $commandName @commandArgs show litellm 2>$null
+        $output = & $commandName @commandArgs show $PackageName 2>$null
         if ($output) {
-            $script:activeChecked = $true
+            switch ($PackageName) {
+                "litellm" { $script:litellmActiveChecked = $true }
+                "telnyx"  { $script:telnyxActiveChecked = $true }
+            }
             $versionLine = $output | Select-String "^Version:" | Select-Object -First 1
             $locationLine = $output | Select-String "^Location:" | Select-Object -First 1
             $version = if ($versionLine) { $versionLine.ToString().Split(":")[1].Trim() } else { "" }
             $location = if ($locationLine) { $locationLine.ToString().Split(":", 2)[1].Trim() } else { "unknown" }
 
-            if (Test-BadVersion $version) {
-                Write-Host "  !! 危険: litellm $version @ $location [$Label]" -ForegroundColor Red
+            $isBad = switch ($PackageName) {
+                "litellm" { Test-BadLitellmVersion $version }
+                "telnyx"  { Test-BadTelnyxVersion $version }
+                default   { $false }
+            }
+
+            if ($isBad) {
+                Write-Host "  !! 危険: $PackageName $version @ $location [$Label]" -ForegroundColor Red
                 $script:found = $true
             } elseif ($version) {
-                Write-Host "  OK: litellm $version @ $location [$Label]" -ForegroundColor Green
+                Write-Host "  OK: $PackageName $version @ $location [$Label]" -ForegroundColor Green
             }
         }
     } catch {}
 }
 
 function Get-DockerShowOutput {
-    param([string]$ImageRef)
+    param(
+        [string]$ImageRef,
+        [string]$PackageName
+    )
 
     $commands = @(
-        @("pip", "show", "litellm"),
-        @("pip3", "show", "litellm"),
-        @("python", "-m", "pip", "show", "litellm"),
-        @("python3", "-m", "pip", "show", "litellm")
+        @("pip", "show", $PackageName),
+        @("pip3", "show", $PackageName),
+        @("python", "-m", "pip", "show", $PackageName),
+        @("python3", "-m", "pip", "show", $PackageName)
     )
 
     foreach ($command in $commands) {
@@ -153,9 +175,9 @@ if (-not $ScanDirs -or $ScanDirs.Count -eq 0) {
 }
 
 Write-Host ""
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host " LiteLLM 侵害チェック (Windows)"        -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "=================================================" -ForegroundColor Cyan
+Write-Host " LiteLLM / Telnyx 侵害チェック (Windows)"        -ForegroundColor Cyan
+Write-Host "=================================================" -ForegroundColor Cyan
 Write-Host ""
 
 if ($ScanDirs.Count -gt 0) {
@@ -168,25 +190,35 @@ Write-Host ""
 # ----------------------------------------------------------
 # 1. 現在アクティブな環境の litellm バージョン確認
 # ----------------------------------------------------------
-Write-Host "[1/8] アクティブ環境の litellm バージョンを確認中..." -ForegroundColor Yellow
+Write-Host "[1/9] アクティブ環境の litellm / telnyx バージョンを確認中..." -ForegroundColor Yellow
 
-if (Get-Command pip -ErrorAction SilentlyContinue) { Show-InstalledVersion -Label "pip" -CommandParts @("pip") }
-if (Get-Command pip3 -ErrorAction SilentlyContinue) { Show-InstalledVersion -Label "pip3" -CommandParts @("pip3") }
-if (Get-Command python -ErrorAction SilentlyContinue) { Show-InstalledVersion -Label "python -m pip" -CommandParts @("python", "-m", "pip") }
-if (Get-Command py -ErrorAction SilentlyContinue) { Show-InstalledVersion -Label "py -m pip" -CommandParts @("py", "-m", "pip") }
-if (Get-Command uv -ErrorAction SilentlyContinue) { Show-InstalledVersion -Label "uv pip" -CommandParts @("uv", "pip") }
+if (Get-Command pip -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "litellm" -Label "pip" -CommandParts @("pip") }
+if (Get-Command pip3 -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "litellm" -Label "pip3" -CommandParts @("pip3") }
+if (Get-Command python -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "litellm" -Label "python -m pip" -CommandParts @("python", "-m", "pip") }
+if (Get-Command py -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "litellm" -Label "py -m pip" -CommandParts @("py", "-m", "pip") }
+if (Get-Command uv -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "litellm" -Label "uv pip" -CommandParts @("uv", "pip") }
 
-if (-not $activeChecked) {
+if (Get-Command pip -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "telnyx" -Label "pip" -CommandParts @("pip") }
+if (Get-Command pip3 -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "telnyx" -Label "pip3" -CommandParts @("pip3") }
+if (Get-Command python -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "telnyx" -Label "python -m pip" -CommandParts @("python", "-m", "pip") }
+if (Get-Command py -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "telnyx" -Label "py -m pip" -CommandParts @("py", "-m", "pip") }
+if (Get-Command uv -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "telnyx" -Label "uv pip" -CommandParts @("uv", "pip") }
+
+if (-not $litellmActiveChecked) {
     Write-Host "  INFO: アクティブ環境に litellm はインストールされていません" -ForegroundColor Gray
+}
+if (-not $telnyxActiveChecked) {
+    Write-Host "  INFO: アクティブ環境に telnyx はインストールされていません" -ForegroundColor Gray
 }
 
 # ----------------------------------------------------------
 # 2. 仮想環境を横断して litellm の全インストール箇所を一覧表示
 # ----------------------------------------------------------
-Write-Host "[2/8] 仮想環境内の litellm を横断検索中..." -ForegroundColor Yellow
+Write-Host "[2/9] 仮想環境内の litellm / telnyx を横断検索中..." -ForegroundColor Yellow
 Write-Host "  （ディスク容量によっては数分かかります）" -ForegroundColor Gray
 
-$venvCount = 0
+$litellmVenvCount = 0
+$telnyxVenvCount = 0
 
 foreach ($scanDir in $ScanDirs) {
     if (-not (Test-Path -LiteralPath $scanDir)) { continue }
@@ -195,13 +227,13 @@ foreach ($scanDir in $ScanDirs) {
         Where-Object { $_.DirectoryName -match "litellm-[\d.]+\.dist-info" }
 
     foreach ($meta in $metadataFiles) {
-        $venvCount++
+        $litellmVenvCount++
         $metaContent = Get-Content $meta.FullName -ErrorAction SilentlyContinue
         $versionLine = $metaContent | Select-String "^Version:" | Select-Object -First 1
         if ($versionLine) {
             $version = $versionLine.ToString().Split(":")[1].Trim()
             $distInfoDir = $meta.DirectoryName
-            if (Test-BadVersion $version) {
+            if (Test-BadLitellmVersion $version) {
                 Write-Host "  !! 危険: litellm $version @ $distInfoDir" -ForegroundColor Red
                 $found = $true
             } else {
@@ -209,16 +241,38 @@ foreach ($scanDir in $ScanDirs) {
             }
         }
     }
+
+    $telnyxMetadataFiles = Get-ChildItem -Path $scanDir -Recurse -Filter "METADATA" -ErrorAction SilentlyContinue |
+        Where-Object { $_.DirectoryName -match "telnyx-[\d.]+\.dist-info" }
+
+    foreach ($meta in $telnyxMetadataFiles) {
+        $telnyxVenvCount++
+        $metaContent = Get-Content $meta.FullName -ErrorAction SilentlyContinue
+        $versionLine = $metaContent | Select-String "^Version:" | Select-Object -First 1
+        if ($versionLine) {
+            $version = $versionLine.ToString().Split(":")[1].Trim()
+            $distInfoDir = $meta.DirectoryName
+            if (Test-BadTelnyxVersion $version) {
+                Write-Host "  !! 危険: telnyx $version @ $distInfoDir" -ForegroundColor Red
+                $found = $true
+            } else {
+                Write-Host "  OK: telnyx $version @ $distInfoDir" -ForegroundColor DarkGreen
+            }
+        }
+    }
 }
 
-if ($venvCount -eq 0) {
+if ($litellmVenvCount -eq 0) {
     Write-Host "  INFO: スキャン範囲内に litellm は見つかりませんでした" -ForegroundColor Gray
+}
+if ($telnyxVenvCount -eq 0) {
+    Write-Host "  INFO: スキャン範囲内に telnyx は見つかりませんでした" -ForegroundColor Gray
 }
 
 # ----------------------------------------------------------
 # 3. litellm_init.pth を横断検索
 # ----------------------------------------------------------
-Write-Host "[3/8] litellm_init.pth を横断検索中..." -ForegroundColor Yellow
+Write-Host "[3/9] litellm_init.pth を横断検索中..." -ForegroundColor Yellow
 
 $pthFiles = @()
 foreach ($scanDir in $ScanDirs) {
@@ -238,7 +292,7 @@ if ($pthFiles.Count -gt 0) {
 # ----------------------------------------------------------
 # 4. 永続化バックドア (sysmon.py)
 # ----------------------------------------------------------
-Write-Host "[4/8] 永続化バックドア (sysmon.py) を確認中..." -ForegroundColor Yellow
+Write-Host "[4/9] 永続化バックドア (sysmon.py) を確認中..." -ForegroundColor Yellow
 
 $sysmonPath = Join-OptionalPath -BasePath $env:USERPROFILE -ChildPath ".config\sysmon\sysmon.py"
 if ($sysmonPath -and (Test-Path -LiteralPath $sysmonPath)) {
@@ -249,14 +303,40 @@ if ($sysmonPath -and (Test-Path -LiteralPath $sysmonPath)) {
 }
 
 # ----------------------------------------------------------
-# 5. conda 環境のチェック
+# 5. telnyx 永続化バックドア (msbuild.exe) - Windows 固有
 # ----------------------------------------------------------
-Write-Host "[5/8] conda 環境を確認中..." -ForegroundColor Yellow
+Write-Host "[5/9] telnyx 永続化バックドア (msbuild.exe) を確認中..." -ForegroundColor Yellow
+
+$startupFolder = Join-OptionalPath -BasePath $env:APPDATA -ChildPath "Microsoft\Windows\Start Menu\Programs\Startup"
+$msbuildExe = if ($startupFolder) { Join-Path $startupFolder "msbuild.exe" } else { $null }
+$msbuildLock = if ($startupFolder) { Join-Path $startupFolder "msbuild.exe.lock" } else { $null }
+
+$msbuildFound = $false
+if ($msbuildExe -and (Test-Path -LiteralPath $msbuildExe)) {
+    Write-Host "  !! 危険: $msbuildExe" -ForegroundColor Red
+    $msbuildFound = $true
+    $found = $true
+}
+if ($msbuildLock -and (Test-Path -LiteralPath $msbuildLock)) {
+    Write-Host "  !! 危険: $msbuildLock" -ForegroundColor Red
+    $msbuildFound = $true
+    $found = $true
+}
+
+if (-not $msbuildFound) {
+    Write-Host "  OK: msbuild.exe は見つかりませんでした" -ForegroundColor Green
+}
+
+# ----------------------------------------------------------
+# 6. conda 環境のチェック
+# ----------------------------------------------------------
+Write-Host "[6/9] conda 環境を確認中..." -ForegroundColor Yellow
 
 try {
     $condaInfo = & conda info --envs 2>$null
     if ($condaInfo) {
-        $condaChecked = $false
+        $condaLitellmChecked = $false
+        $condaTelnyxChecked = $false
         foreach ($line in $condaInfo) {
             if ($line -match "^\s*#" -or [string]::IsNullOrWhiteSpace($line)) { continue }
             $envPath = ($line -split "\s+")[-1]
@@ -264,12 +344,12 @@ try {
                 $condaMetas = Get-ChildItem -Path $envPath -Recurse -Filter "METADATA" -ErrorAction SilentlyContinue |
                     Where-Object { $_.DirectoryName -match "litellm-[\d.]+\.dist-info" }
                 foreach ($meta in $condaMetas) {
-                    $condaChecked = $true
+                    $condaLitellmChecked = $true
                     $metaContent = Get-Content $meta.FullName -ErrorAction SilentlyContinue
                     $versionLine = $metaContent | Select-String "^Version:" | Select-Object -First 1
                     if ($versionLine) {
                         $version = $versionLine.ToString().Split(":")[1].Trim()
-                        if (Test-BadVersion $version) {
+                        if (Test-BadLitellmVersion $version) {
                             Write-Host "  !! 危険: litellm $version @ conda $envPath" -ForegroundColor Red
                             $found = $true
                         } else {
@@ -277,10 +357,30 @@ try {
                         }
                     }
                 }
+
+                $condaTelnyxMetas = Get-ChildItem -Path $envPath -Recurse -Filter "METADATA" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.DirectoryName -match "telnyx-[\d.]+\.dist-info" }
+                foreach ($meta in $condaTelnyxMetas) {
+                    $condaTelnyxChecked = $true
+                    $metaContent = Get-Content $meta.FullName -ErrorAction SilentlyContinue
+                    $versionLine = $metaContent | Select-String "^Version:" | Select-Object -First 1
+                    if ($versionLine) {
+                        $version = $versionLine.ToString().Split(":")[1].Trim()
+                        if (Test-BadTelnyxVersion $version) {
+                            Write-Host "  !! 危険: telnyx $version @ conda $envPath" -ForegroundColor Red
+                            $found = $true
+                        } else {
+                            Write-Host "  OK: telnyx $version @ conda $envPath" -ForegroundColor DarkGreen
+                        }
+                    }
+                }
             }
         }
-        if (-not $condaChecked) {
+        if (-not $condaLitellmChecked) {
             Write-Host "  INFO: conda 環境に litellm はありません" -ForegroundColor Gray
+        }
+        if (-not $condaTelnyxChecked) {
+            Write-Host "  INFO: conda 環境に telnyx はありません" -ForegroundColor Gray
         }
     } else {
         Write-Host "  INFO: conda コマンドが利用できません" -ForegroundColor Gray
@@ -290,12 +390,14 @@ try {
 }
 
 # ----------------------------------------------------------
-# 6. uv キャッシュ
+# 7. uv キャッシュ
 # ----------------------------------------------------------
-Write-Host "[6/8] uv キャッシュ内を検索中..." -ForegroundColor Yellow
+Write-Host "[7/9] uv キャッシュ内を検索中..." -ForegroundColor Yellow
 
 $uvCacheBase = Join-OptionalPath -BasePath $env:LOCALAPPDATA -ChildPath "uv\cache"
 if ($uvCacheBase -and (Test-Path -LiteralPath $uvCacheBase)) {
+    $uvIssue = $false
+
     $cachedPth = Get-ChildItem -Path $uvCacheBase -Recurse -Filter "litellm_init.pth" -ErrorAction SilentlyContinue
     if ($cachedPth) {
         Write-Host "  !! 危険: uv キャッシュに litellm_init.pth が見つかりました:" -ForegroundColor Red
@@ -303,7 +405,25 @@ if ($uvCacheBase -and (Test-Path -LiteralPath $uvCacheBase)) {
             Write-Host "     $($file.FullName)" -ForegroundColor Red
         }
         $found = $true
-    } else {
+        $uvIssue = $true
+    }
+
+    $telnyxCacheMetas = Get-ChildItem -Path $uvCacheBase -Recurse -Filter "METADATA" -ErrorAction SilentlyContinue |
+        Where-Object { $_.DirectoryName -match "telnyx-[\d.]+\.dist-info" }
+    foreach ($meta in $telnyxCacheMetas) {
+        $metaContent = Get-Content $meta.FullName -ErrorAction SilentlyContinue
+        $versionLine = $metaContent | Select-String "^Version:" | Select-Object -First 1
+        if ($versionLine) {
+            $version = $versionLine.ToString().Split(":")[1].Trim()
+            if (Test-BadTelnyxVersion $version) {
+                Write-Host "  !! 危険: uv キャッシュに telnyx $version が見つかりました: $($meta.DirectoryName)" -ForegroundColor Red
+                $found = $true
+                $uvIssue = $true
+            }
+        }
+    }
+
+    if (-not $uvIssue) {
         Write-Host "  OK: uv キャッシュに問題なし" -ForegroundColor Green
     }
 } else {
@@ -311,12 +431,14 @@ if ($uvCacheBase -and (Test-Path -LiteralPath $uvCacheBase)) {
 }
 
 # ----------------------------------------------------------
-# 7. pip キャッシュ
+# 8. pip キャッシュ
 # ----------------------------------------------------------
-Write-Host "[7/8] pip キャッシュ内を検索中..." -ForegroundColor Yellow
+Write-Host "[8/9] pip キャッシュ内を検索中..." -ForegroundColor Yellow
 
 $pipCacheBase = Join-OptionalPath -BasePath $env:LOCALAPPDATA -ChildPath "pip\Cache"
 if ($pipCacheBase -and (Test-Path -LiteralPath $pipCacheBase)) {
+    $pipIssue = $false
+
     $cachedPth = Get-ChildItem -Path $pipCacheBase -Recurse -Filter "litellm_init.pth" -ErrorAction SilentlyContinue
     if ($cachedPth) {
         Write-Host "  !! 危険: pip キャッシュに litellm_init.pth が見つかりました:" -ForegroundColor Red
@@ -324,7 +446,25 @@ if ($pipCacheBase -and (Test-Path -LiteralPath $pipCacheBase)) {
             Write-Host "     $($file.FullName)" -ForegroundColor Red
         }
         $found = $true
-    } else {
+        $pipIssue = $true
+    }
+
+    $telnyxPipMetas = Get-ChildItem -Path $pipCacheBase -Recurse -Filter "METADATA" -ErrorAction SilentlyContinue |
+        Where-Object { $_.DirectoryName -match "telnyx-[\d.]+\.dist-info" }
+    foreach ($meta in $telnyxPipMetas) {
+        $metaContent = Get-Content $meta.FullName -ErrorAction SilentlyContinue
+        $versionLine = $metaContent | Select-String "^Version:" | Select-Object -First 1
+        if ($versionLine) {
+            $version = $versionLine.ToString().Split(":")[1].Trim()
+            if (Test-BadTelnyxVersion $version) {
+                Write-Host "  !! 危険: pip キャッシュに telnyx $version が見つかりました: $($meta.DirectoryName)" -ForegroundColor Red
+                $found = $true
+                $pipIssue = $true
+            }
+        }
+    }
+
+    if (-not $pipIssue) {
         Write-Host "  OK: pip キャッシュに問題なし" -ForegroundColor Green
     }
 } else {
@@ -332,9 +472,9 @@ if ($pipCacheBase -and (Test-Path -LiteralPath $pipCacheBase)) {
 }
 
 # ----------------------------------------------------------
-# 8. Docker イメージのチェック
+# 9. Docker イメージのチェック
 # ----------------------------------------------------------
-Write-Host "[8/8] Docker イメージ内の litellm を確認中..." -ForegroundColor Yellow
+Write-Host "[9/9] Docker イメージ内の litellm / telnyx を確認中..." -ForegroundColor Yellow
 
 if ($SkipDocker) {
     Write-Host "  INFO: -SkipDocker が指定されたためスキップします" -ForegroundColor Gray
@@ -354,15 +494,27 @@ if ($SkipDocker) {
 
                     Write-Host "  スキャン中: $displayName ($imageId)..." -ForegroundColor Gray
 
-                    $result = Get-DockerShowOutput -ImageRef $imageId
+                    $result = Get-DockerShowOutput -ImageRef $imageId -PackageName "litellm"
                     if ($result) {
                         $versionLine = $result | Select-String "^Version:" | Select-Object -First 1
                         $version = if ($versionLine) { $versionLine.ToString().Split(":")[1].Trim() } else { "" }
-                        if (Test-BadVersion $version) {
+                        if (Test-BadLitellmVersion $version) {
                             Write-Host "  !! 危険: litellm $version @ Docker イメージ $displayName" -ForegroundColor Red
                             $found = $true
                         } elseif ($version) {
                             Write-Host "  OK: litellm $version @ Docker イメージ $displayName" -ForegroundColor DarkGreen
+                        }
+                    }
+
+                    $telnyxResult = Get-DockerShowOutput -ImageRef $imageId -PackageName "telnyx"
+                    if ($telnyxResult) {
+                        $versionLine = $telnyxResult | Select-String "^Version:" | Select-Object -First 1
+                        $version = if ($versionLine) { $versionLine.ToString().Split(":")[1].Trim() } else { "" }
+                        if (Test-BadTelnyxVersion $version) {
+                            Write-Host "  !! 危険: telnyx $version @ Docker イメージ $displayName" -ForegroundColor Red
+                            $found = $true
+                        } elseif ($version) {
+                            Write-Host "  OK: telnyx $version @ Docker イメージ $displayName" -ForegroundColor DarkGreen
                         }
                     }
 
@@ -390,17 +542,19 @@ if ($SkipDocker) {
 # 結果サマリ
 # ----------------------------------------------------------
 Write-Host ""
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host " 結果"                                    -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "=================================================" -ForegroundColor Cyan
+Write-Host " 結果"                                                -ForegroundColor Cyan
+Write-Host "=================================================" -ForegroundColor Cyan
 
 if ($found) {
     Write-Host ""
     Write-Host "!! 侵害の痕跡が検出されました。以下の対応を直ちに行ってください:" -ForegroundColor Red
     Write-Host ""
-    Write-Host "  1. litellm をアンインストールする（検出された環境ごとに）"       -ForegroundColor White
+    Write-Host "  1. 侵害パッケージをアンインストールする（検出された環境ごとに）"  -ForegroundColor White
     Write-Host "     該当の仮想環境を activate してから:"                           -ForegroundColor Gray
     Write-Host "     pip uninstall litellm / uv pip uninstall litellm"              -ForegroundColor Gray
+    Write-Host "     pip uninstall telnyx  / uv pip uninstall telnyx"               -ForegroundColor Gray
+    Write-Host "     telnyx を利用継続する場合は telnyx==4.87.0 以前にピン留め"      -ForegroundColor Gray
     Write-Host ""
     Write-Host "  2. キャッシュを削除する"                                          -ForegroundColor White
     Write-Host "     pip cache purge"                                                -ForegroundColor Gray
@@ -408,8 +562,10 @@ if ($found) {
     Write-Host ""
     Write-Host "  3. litellm_init.pth を手動で削除する（上記で検出されたパス）"      -ForegroundColor White
     Write-Host ""
-    Write-Host "  4. sysmon.py バックドアがあれば削除する"                           -ForegroundColor White
+    Write-Host "  4. バックドアファイルがあれば削除する"                              -ForegroundColor White
     Write-Host "     del `"$sysmonPath`""                                            -ForegroundColor Gray
+    Write-Host "     del `"$msbuildExe`""                                            -ForegroundColor Gray
+    Write-Host "     del `"$msbuildLock`""                                           -ForegroundColor Gray
     Write-Host ""
     Write-Host "  5. Docker イメージに問題があれば再ビルドする"                      -ForegroundColor White
     Write-Host "     侵害バージョンを含むイメージは破棄し、安全なバージョンへ更新して" -ForegroundColor Gray
