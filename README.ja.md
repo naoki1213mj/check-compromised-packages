@@ -1,8 +1,8 @@
-# check-litellm
+# check-compromised-packages
 
 日本語 README（参考訳）です。正本は英語版の [README.md](README.md) です。内容に差異がある場合は英語版を優先してください。
 
-`check-litellm` は、2026 年 3 月に公表された以下の侵害パッケージの痕跡をローカル環境で確認するためのスクリプト集です。
+`check-compromised-packages` は、2026 年 3 月に公表された以下の侵害パッケージの痕跡をローカル環境で確認するためのスクリプト集です。
 
 - **LiteLLM** `1.82.7` / `1.82.8`（PyPI、2026 年 3 月 24 日公表 — 脅威アクタ **TeamPCP**）
 - **Telnyx** `4.87.1` / `4.87.2`（PyPI、2026 年 3 月 27 日公表 — 脅威アクタ **TeamPCP**）

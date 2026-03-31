@@ -1,9 +1,9 @@
-# check-litellm
+# check-compromised-packages
 
 English README (authoritative): this file  
 Japanese README (reference translation): [README.ja.md](README.ja.md)
 
-`check-litellm` provides two local inspection scripts for identifying traces associated with the following compromised packages, publicly disclosed in March 2026:
+`check-compromised-packages` provides two local inspection scripts for identifying traces associated with the following compromised packages, publicly disclosed in March 2026:
 
 - **LiteLLM** `1.82.7` / `1.82.8` (PyPI, disclosed March 24, 2026 — threat actor **TeamPCP**)
 - **Telnyx** `4.87.1` / `4.87.2` (PyPI, disclosed March 27, 2026 — threat actor **TeamPCP**)
