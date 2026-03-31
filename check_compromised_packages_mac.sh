@@ -20,7 +20,7 @@ set -uo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-DARKGREEN='\033[0;32m'
+DARKGREEN='\033[2;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 GRAY='\033[0;37m'
@@ -30,7 +30,6 @@ FOUND=0
 SKIP_DOCKER="${SKIP_DOCKER:-0}"
 LITELLM_ACTIVE_CHECKED=0
 TELNYX_ACTIVE_CHECKED=0
-AXIOS_BACKDOOR_CHECKED=0
 SCAN_DIRS=()
 
 add_scan_dir() {
@@ -171,7 +170,7 @@ echo ""
 # ----------------------------------------------------------
 # 1. 現在アクティブな環境の litellm バージョン確認
 # ----------------------------------------------------------
-echo -e "${YELLOW}[1/14] アクティブ環境の litellm / telnyx バージョンを確認中...${NC}"
+echo -e "${YELLOW}[1/13] アクティブ環境の litellm / telnyx バージョンを確認中...${NC}"
 
 command -v pip >/dev/null 2>&1 && check_show_command "litellm" "pip" pip
 command -v pip3 >/dev/null 2>&1 && check_show_command "litellm" "pip3" pip3
@@ -195,7 +194,7 @@ fi
 # ----------------------------------------------------------
 # 2. 仮想環境を横断して litellm の全インストール箇所を一覧表示
 # ----------------------------------------------------------
-echo -e "${YELLOW}[2/14] 仮想環境内の litellm / telnyx を横断検索中...${NC}"
+echo -e "${YELLOW}[2/13] 仮想環境内の litellm / telnyx を横断検索中...${NC}"
 echo -e "  ${GRAY}（ディスク容量によっては数分かかります）${NC}"
 
 VENV_LITELLM_COUNT=0
@@ -237,7 +236,7 @@ fi
 # ----------------------------------------------------------
 # 3. litellm_init.pth を横断検索
 # ----------------------------------------------------------
-echo -e "${YELLOW}[3/14] litellm_init.pth を横断検索中...${NC}"
+echo -e "${YELLOW}[3/13] litellm_init.pth を横断検索中...${NC}"
 
 PTH_FOUND=0
 for scan_dir in "${SCAN_DIRS[@]}"; do
@@ -255,7 +254,7 @@ fi
 # ----------------------------------------------------------
 # 4. 永続化バックドア (sysmon.py)
 # ----------------------------------------------------------
-echo -e "${YELLOW}[4/14] 永続化バックドア (sysmon.py) を確認中...${NC}"
+echo -e "${YELLOW}[4/13] 永続化バックドア (sysmon.py) を確認中...${NC}"
 
 SYSMON_PATH="$HOME/.config/sysmon/sysmon.py"
 if [ -f "$SYSMON_PATH" ]; then
@@ -268,20 +267,24 @@ fi
 # ----------------------------------------------------------
 # 5. systemd 永続化サービスの確認（Linux のみ）
 # ----------------------------------------------------------
-echo -e "${YELLOW}[5/14] systemd バックドアサービスを確認中...${NC}"
+echo -e "${YELLOW}[5/13] systemd バックドアサービスを確認中...${NC}"
 
-SYSTEMD_SERVICE="$HOME/.config/systemd/user/sysmon.service"
-if [ -f "$SYSTEMD_SERVICE" ]; then
-    echo -e "  ${RED}!! 危険: $SYSTEMD_SERVICE${NC}"
-    FOUND=1
+if [ "$(uname -s)" = "Linux" ]; then
+    SYSTEMD_SERVICE="$HOME/.config/systemd/user/sysmon.service"
+    if [ -f "$SYSTEMD_SERVICE" ]; then
+        echo -e "  ${RED}!! 危険: $SYSTEMD_SERVICE${NC}"
+        FOUND=1
+    else
+        echo -e "  ${GREEN}OK: sysmon.service は見つかりませんでした${NC}"
+    fi
 else
-    echo -e "  ${GREEN}OK: sysmon.service は見つかりませんでした${NC}"
+    echo -e "  ${GRAY}INFO: macOS では systemd は対象外です${NC}"
 fi
 
 # ----------------------------------------------------------
 # 6. conda 環境のチェック
 # ----------------------------------------------------------
-echo -e "${YELLOW}[6/14] conda 環境を確認中...${NC}"
+echo -e "${YELLOW}[6/13] conda 環境を確認中...${NC}"
 
 if command -v conda >/dev/null 2>&1; then
     CONDA_LITELLM_CHECKED=0
@@ -324,7 +327,7 @@ fi
 # ----------------------------------------------------------
 # 7. uv キャッシュ
 # ----------------------------------------------------------
-echo -e "${YELLOW}[7/14] uv キャッシュ内を検索中...${NC}"
+echo -e "${YELLOW}[7/13] uv キャッシュ内を検索中...${NC}"
 
 UV_CACHE="$HOME/.cache/uv"
 [ -d "$UV_CACHE" ] || UV_CACHE="$HOME/Library/Caches/uv"
@@ -351,6 +354,15 @@ if [ -d "$UV_CACHE" ]; then
         fi
     done < <(find "$UV_CACHE" -path "*/telnyx-*.dist-info/METADATA" -type f 2>/dev/null)
 
+    while IFS= read -r meta_file; do
+        VERSION=$(awk -F': ' '/^Version:/ {print $2; exit}' "$meta_file" 2>/dev/null || true)
+        if is_bad_litellm_version "$VERSION"; then
+            echo -e "  ${RED}!! 危険: uv キャッシュに litellm $VERSION が見つかりました: $(dirname "$meta_file")${NC}"
+            FOUND=1
+            UV_ISSUE=1
+        fi
+    done < <(find "$UV_CACHE" -path "*/litellm-*.dist-info/METADATA" -type f 2>/dev/null)
+
     if [ "$UV_ISSUE" -eq 0 ]; then
         echo -e "  ${GREEN}OK: uv キャッシュに問題なし${NC}"
     fi
@@ -361,7 +373,7 @@ fi
 # ----------------------------------------------------------
 # 8. pip キャッシュ
 # ----------------------------------------------------------
-echo -e "${YELLOW}[8/14] pip キャッシュ内を検索中...${NC}"
+echo -e "${YELLOW}[8/13] pip キャッシュ内を検索中...${NC}"
 
 PIP_CACHE_FOUND=0
 for cache_dir in "$HOME/.cache/pip" "$HOME/Library/Caches/pip"; do
@@ -385,6 +397,15 @@ for cache_dir in "$HOME/.cache/pip" "$HOME/Library/Caches/pip"; do
             FOUND=1
         fi
     done < <(find "$cache_dir" -path "*/telnyx-*.dist-info/METADATA" -type f 2>/dev/null)
+
+    while IFS= read -r meta_file; do
+        VERSION=$(awk -F': ' '/^Version:/ {print $2; exit}' "$meta_file" 2>/dev/null || true)
+        if is_bad_litellm_version "$VERSION"; then
+            echo -e "  ${RED}!! 危険: pip キャッシュに litellm $VERSION が見つかりました: $(dirname "$meta_file")${NC}"
+            PIP_CACHE_FOUND=1
+            FOUND=1
+        fi
+    done < <(find "$cache_dir" -path "*/litellm-*.dist-info/METADATA" -type f 2>/dev/null)
 done
 
 if [ "$PIP_CACHE_FOUND" -eq 0 ]; then
@@ -392,9 +413,9 @@ if [ "$PIP_CACHE_FOUND" -eq 0 ]; then
 fi
 
 # ----------------------------------------------------------
-# 10. axios バックドアファイルの確認
+# 9. axios バックドアファイルの確認
 # ----------------------------------------------------------
-echo -e "${YELLOW}[10/14] axios バックドアファイルを確認中...${NC}"
+echo -e "${YELLOW}[9/13] axios バックドアファイルを確認中...${NC}"
 
 AXIOS_BACKDOOR_FOUND=0
 os_name="$(uname -s)"
@@ -420,9 +441,9 @@ if [ "$AXIOS_BACKDOOR_FOUND" -eq 0 ]; then
 fi
 
 # ----------------------------------------------------------
-# 11. node_modules 内の plain-crypto-js を検索
+# 10. node_modules 内の plain-crypto-js を検索
 # ----------------------------------------------------------
-echo -e "${YELLOW}[11/14] node_modules 内の plain-crypto-js を検索中...${NC}"
+echo -e "${YELLOW}[10/13] node_modules 内の plain-crypto-js を検索中...${NC}"
 echo -e "  ${GRAY}（ディスク容量によっては数分かかります）${NC}"
 
 PLAIN_CRYPTO_FOUND=0
@@ -439,9 +460,9 @@ if [ "$PLAIN_CRYPTO_FOUND" -eq 0 ]; then
 fi
 
 # ----------------------------------------------------------
-# 12. node_modules 内の侵害版 axios を検索
+# 11. node_modules 内の侵害版 axios を検索
 # ----------------------------------------------------------
-echo -e "${YELLOW}[12/14] node_modules 内の axios バージョンを確認中...${NC}"
+echo -e "${YELLOW}[11/13] node_modules 内の axios バージョンを確認中...${NC}"
 
 AXIOS_VERSION_COUNT=0
 for scan_dir in "${SCAN_DIRS[@]}"; do
@@ -463,9 +484,9 @@ if [ "$AXIOS_VERSION_COUNT" -eq 0 ]; then
 fi
 
 # ----------------------------------------------------------
-# 13. lockfile 内の plain-crypto-js を検索
+# 12. lockfile 内の plain-crypto-js を検索
 # ----------------------------------------------------------
-echo -e "${YELLOW}[13/14] lockfile 内の plain-crypto-js を検索中...${NC}"
+echo -e "${YELLOW}[12/13] lockfile 内の plain-crypto-js を検索中...${NC}"
 
 LOCKFILE_HIT=0
 for scan_dir in "${SCAN_DIRS[@]}"; do
@@ -473,7 +494,7 @@ for scan_dir in "${SCAN_DIRS[@]}"; do
         echo -e "  ${RED}!! 危険: plain-crypto-js が lockfile に記録されています: $lockfile${NC}"
         LOCKFILE_HIT=1
         FOUND=1
-    done < <(find "$scan_dir" \( -name "package-lock.json" -o -name "yarn.lock" -o -name "pnpm-lock.yaml" \) -type f -exec grep -l "plain-crypto-js" {} \; 2>/dev/null)
+    done < <(find "$scan_dir" \( -name "package-lock.json" -o -name "yarn.lock" -o -name "pnpm-lock.yaml" -o -name "bun.lock" \) -type f -exec grep -l "plain-crypto-js" {} \; 2>/dev/null)
 done
 
 if [ "$LOCKFILE_HIT" -eq 0 ]; then
@@ -481,9 +502,9 @@ if [ "$LOCKFILE_HIT" -eq 0 ]; then
 fi
 
 # ----------------------------------------------------------
-# 14. Docker イメージのチェック
+# 13. Docker イメージのチェック
 # ----------------------------------------------------------
-echo -e "${YELLOW}[14/14] Docker イメージ内の litellm / telnyx / axios を確認中...${NC}"
+echo -e "${YELLOW}[13/13] Docker イメージ内の litellm / telnyx / axios を確認中...${NC}"
 
 if [ "$SKIP_DOCKER" = "1" ]; then
     echo -e "  ${GRAY}INFO: SKIP_DOCKER=1 が指定されたためスキップします${NC}"
@@ -532,7 +553,7 @@ elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
         fi
 
         # axios check in Docker
-        DOCKER_AXIOS_OUTPUT="$(docker run --rm --entrypoint "" "$image_id" cat /app/node_modules/axios/package.json 2>/dev/null || true)"
+        DOCKER_AXIOS_OUTPUT="$(docker run --rm --entrypoint "" "$image_id" sh -c 'find / -path "*/node_modules/axios/package.json" -type f -exec cat {} \; 2>/dev/null' 2>/dev/null || true)"
         if [ -n "$DOCKER_AXIOS_OUTPUT" ]; then
             DOCKER_AXIOS_VERSION=$(printf '%s' "$DOCKER_AXIOS_OUTPUT" | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
             if is_bad_axios_version "$DOCKER_AXIOS_VERSION"; then
@@ -609,6 +630,7 @@ if [ "$FOUND" -eq 1 ]; then
     echo ""
     echo " 10. npm キャッシュをクリアする"
     echo -e "     ${GRAY}npm cache clean --force${NC}"
+    echo -e "     ${GRAY}bun を使用している場合: bun pm cache rm${NC}"
     echo ""
     exit 1
 else

@@ -43,7 +43,7 @@
 - ローカル Docker イメージ内の LiteLLM / Telnyx 関連痕跡
 - `axios@1.14.1` / `axios@0.30.4` の有無（`node_modules` 内）
 - `node_modules` 内の `plain-crypto-js` ディレクトリ（axios 侵害の痕跡）
-- lockfile（`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`）内の `plain-crypto-js`
+- lockfile（`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml` / `bun.lock`）内の `plain-crypto-js`
 - axios 固有バックドアファイル: `com.apple.act.mond`（macOS）、`wt.exe` / `6202033.vbs` / `6202033.ps1`（Windows）、`ld.py`（Linux）
 
 ## 主な機能
@@ -54,7 +54,7 @@
 - `conda` 利用時の環境横断チェック
 - イメージ名に `litellm` を含むかどうかではなく、ローカル Docker イメージ全体を対象にした検査
 - `node_modules` 配下の侵害版 axios および悪性依存 `plain-crypto-js` の走査
-- lockfile（`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`）内の `plain-crypto-js` 検索
+- lockfile（`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml` / `bun.lock`）内の `plain-crypto-js` 検索
 - プラットフォーム固有の axios バックドアファイルの確認
 - 検知時に `exit 1` を返すため、自動化に組み込みやすい
 
@@ -158,7 +158,7 @@ RMM、Intune、CI、定期点検ジョブなどに組み込むことを想定し
 - axios を安全なバージョンにダウングレードする（`npm install axios@1.14.0`、レガシーは `axios@0.30.3`）
 - `node_modules` 内の `plain-crypto-js` ディレクトリを削除する
 - axios 固有バックドアファイルを削除する（`com.apple.act.mond`、`wt.exe`、`6202033.vbs`、`6202033.ps1`、`ld.py`）
-- npm キャッシュをクリアする（`npm cache clean --force`）
+- npm キャッシュをクリアする（`npm cache clean --force`）、bun 利用時は `bun pm cache rm` も実行
 
 ## 制限事項
 

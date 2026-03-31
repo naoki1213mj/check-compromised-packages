@@ -199,7 +199,7 @@ Write-Host ""
 # ----------------------------------------------------------
 # 1. 現在アクティブな環境の litellm バージョン確認
 # ----------------------------------------------------------
-Write-Host "[1/14] アクティブ環境の litellm / telnyx バージョンを確認中..." -ForegroundColor Yellow
+Write-Host "[1/13] アクティブ環境の litellm / telnyx バージョンを確認中..." -ForegroundColor Yellow
 
 if (Get-Command pip -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "litellm" -Label "pip" -CommandParts @("pip") }
 if (Get-Command pip3 -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "litellm" -Label "pip3" -CommandParts @("pip3") }
@@ -223,7 +223,7 @@ if (-not $telnyxActiveChecked) {
 # ----------------------------------------------------------
 # 2. 仮想環境を横断して litellm の全インストール箇所を一覧表示
 # ----------------------------------------------------------
-Write-Host "[2/14] 仮想環境内の litellm / telnyx を横断検索中..." -ForegroundColor Yellow
+Write-Host "[2/13] 仮想環境内の litellm / telnyx を横断検索中..." -ForegroundColor Yellow
 Write-Host "  （ディスク容量によっては数分かかります）" -ForegroundColor Gray
 
 $litellmVenvCount = 0
@@ -281,7 +281,7 @@ if ($telnyxVenvCount -eq 0) {
 # ----------------------------------------------------------
 # 3. litellm_init.pth を横断検索
 # ----------------------------------------------------------
-Write-Host "[3/14] litellm_init.pth を横断検索中..." -ForegroundColor Yellow
+Write-Host "[3/13] litellm_init.pth を横断検索中..." -ForegroundColor Yellow
 
 $pthFiles = @()
 foreach ($scanDir in $ScanDirs) {
@@ -301,7 +301,7 @@ if ($pthFiles.Count -gt 0) {
 # ----------------------------------------------------------
 # 4. 永続化バックドア (sysmon.py)
 # ----------------------------------------------------------
-Write-Host "[4/14] 永続化バックドア (sysmon.py) を確認中..." -ForegroundColor Yellow
+Write-Host "[4/13] 永続化バックドア (sysmon.py) を確認中..." -ForegroundColor Yellow
 
 $sysmonPath = Join-OptionalPath -BasePath $env:USERPROFILE -ChildPath ".config\sysmon\sysmon.py"
 if ($sysmonPath -and (Test-Path -LiteralPath $sysmonPath)) {
@@ -314,7 +314,7 @@ if ($sysmonPath -and (Test-Path -LiteralPath $sysmonPath)) {
 # ----------------------------------------------------------
 # 5. telnyx 永続化バックドア (msbuild.exe) - Windows 固有
 # ----------------------------------------------------------
-Write-Host "[5/14] telnyx 永続化バックドア (msbuild.exe) を確認中..." -ForegroundColor Yellow
+Write-Host "[5/13] telnyx 永続化バックドア (msbuild.exe) を確認中..." -ForegroundColor Yellow
 
 $startupFolder = Join-OptionalPath -BasePath $env:APPDATA -ChildPath "Microsoft\Windows\Start Menu\Programs\Startup"
 $msbuildExe = if ($startupFolder) { Join-Path $startupFolder "msbuild.exe" } else { $null }
@@ -339,7 +339,7 @@ if (-not $msbuildFound) {
 # ----------------------------------------------------------
 # 6. conda 環境のチェック
 # ----------------------------------------------------------
-Write-Host "[6/14] conda 環境を確認中..." -ForegroundColor Yellow
+Write-Host "[6/13] conda 環境を確認中..." -ForegroundColor Yellow
 
 try {
     $condaInfo = & conda info --envs 2>$null
@@ -401,7 +401,7 @@ try {
 # ----------------------------------------------------------
 # 7. uv キャッシュ
 # ----------------------------------------------------------
-Write-Host "[7/14] uv キャッシュ内を検索中..." -ForegroundColor Yellow
+Write-Host "[7/13] uv キャッシュ内を検索中..." -ForegroundColor Yellow
 
 $uvCacheBase = Join-OptionalPath -BasePath $env:LOCALAPPDATA -ChildPath "uv\cache"
 if ($uvCacheBase -and (Test-Path -LiteralPath $uvCacheBase)) {
@@ -432,6 +432,21 @@ if ($uvCacheBase -and (Test-Path -LiteralPath $uvCacheBase)) {
         }
     }
 
+    $litellmCacheMetas = Get-ChildItem -Path $uvCacheBase -Recurse -Filter "METADATA" -ErrorAction SilentlyContinue |
+        Where-Object { $_.DirectoryName -match "litellm-[\d.]+\.dist-info" }
+    foreach ($meta in $litellmCacheMetas) {
+        $metaContent = Get-Content $meta.FullName -ErrorAction SilentlyContinue
+        $versionLine = $metaContent | Select-String "^Version:" | Select-Object -First 1
+        if ($versionLine) {
+            $version = $versionLine.ToString().Split(":")[1].Trim()
+            if (Test-BadLitellmVersion $version) {
+                Write-Host "  !! 危険: uv キャッシュに litellm $version が見つかりました: $($meta.DirectoryName)" -ForegroundColor Red
+                $found = $true
+                $uvIssue = $true
+            }
+        }
+    }
+
     if (-not $uvIssue) {
         Write-Host "  OK: uv キャッシュに問題なし" -ForegroundColor Green
     }
@@ -442,7 +457,7 @@ if ($uvCacheBase -and (Test-Path -LiteralPath $uvCacheBase)) {
 # ----------------------------------------------------------
 # 8. pip キャッシュ
 # ----------------------------------------------------------
-Write-Host "[8/14] pip キャッシュ内を検索中..." -ForegroundColor Yellow
+Write-Host "[8/13] pip キャッシュ内を検索中..." -ForegroundColor Yellow
 
 $pipCacheBase = Join-OptionalPath -BasePath $env:LOCALAPPDATA -ChildPath "pip\Cache"
 if ($pipCacheBase -and (Test-Path -LiteralPath $pipCacheBase)) {
@@ -473,6 +488,21 @@ if ($pipCacheBase -and (Test-Path -LiteralPath $pipCacheBase)) {
         }
     }
 
+    $litellmPipMetas = Get-ChildItem -Path $pipCacheBase -Recurse -Filter "METADATA" -ErrorAction SilentlyContinue |
+        Where-Object { $_.DirectoryName -match "litellm-[\d.]+\.dist-info" }
+    foreach ($meta in $litellmPipMetas) {
+        $metaContent = Get-Content $meta.FullName -ErrorAction SilentlyContinue
+        $versionLine = $metaContent | Select-String "^Version:" | Select-Object -First 1
+        if ($versionLine) {
+            $version = $versionLine.ToString().Split(":")[1].Trim()
+            if (Test-BadLitellmVersion $version) {
+                Write-Host "  !! 危険: pip キャッシュに litellm $version が見つかりました: $($meta.DirectoryName)" -ForegroundColor Red
+                $found = $true
+                $pipIssue = $true
+            }
+        }
+    }
+
     if (-not $pipIssue) {
         Write-Host "  OK: pip キャッシュに問題なし" -ForegroundColor Green
     }
@@ -481,9 +511,9 @@ if ($pipCacheBase -and (Test-Path -LiteralPath $pipCacheBase)) {
 }
 
 # ----------------------------------------------------------
-# 10. axios バックドアファイルの確認 (Windows)
+# 9. axios バックドアファイルの確認 (Windows)
 # ----------------------------------------------------------
-Write-Host "[10/14] axios バックドアファイルを確認中..." -ForegroundColor Yellow
+Write-Host "[9/13] axios バックドアファイルを確認中..." -ForegroundColor Yellow
 
 $axiosBackdoorFound = $false
 
@@ -513,9 +543,9 @@ if (-not $axiosBackdoorFound) {
 }
 
 # ----------------------------------------------------------
-# 11. node_modules 内の plain-crypto-js を検索
+# 10. node_modules 内の plain-crypto-js を検索
 # ----------------------------------------------------------
-Write-Host "[11/14] node_modules 内の plain-crypto-js を検索中..." -ForegroundColor Yellow
+Write-Host "[10/13] node_modules 内の plain-crypto-js を検索中..." -ForegroundColor Yellow
 Write-Host "  （ディスク容量によっては数分かかります）" -ForegroundColor Gray
 
 $plainCryptoFound = $false
@@ -535,9 +565,9 @@ if (-not $plainCryptoFound) {
 }
 
 # ----------------------------------------------------------
-# 12. node_modules 内の侵害版 axios を検索
+# 11. node_modules 内の侵害版 axios を検索
 # ----------------------------------------------------------
-Write-Host "[12/14] node_modules 内の axios バージョンを確認中..." -ForegroundColor Yellow
+Write-Host "[11/13] node_modules 内の axios バージョンを確認中..." -ForegroundColor Yellow
 
 $axiosVersionCount = 0
 foreach ($scanDir in $ScanDirs) {
@@ -564,15 +594,16 @@ if ($axiosVersionCount -eq 0) {
 }
 
 # ----------------------------------------------------------
-# 13. lockfile 内の plain-crypto-js を検索
+# 12. lockfile 内の plain-crypto-js を検索
 # ----------------------------------------------------------
-Write-Host "[13/14] lockfile 内の plain-crypto-js を検索中..." -ForegroundColor Yellow
+Write-Host "[12/13] lockfile 内の plain-crypto-js を検索中..." -ForegroundColor Yellow
 
 $lockfileHit = $false
 foreach ($scanDir in $ScanDirs) {
     if (-not (Test-Path -LiteralPath $scanDir)) { continue }
-    $lockfiles = Get-ChildItem -Path $scanDir -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -in @("package-lock.json", "yarn.lock", "pnpm-lock.yaml") }
+    $lockfiles = @("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock") | ForEach-Object {
+        Get-ChildItem -Path $scanDir -Recurse -Filter $_ -ErrorAction SilentlyContinue
+    }
     foreach ($lockfile in $lockfiles) {
         try {
             $content = Get-Content $lockfile.FullName -Raw -ErrorAction SilentlyContinue
@@ -590,9 +621,9 @@ if (-not $lockfileHit) {
 }
 
 # ----------------------------------------------------------
-# 14. Docker イメージのチェック
+# 13. Docker イメージのチェック
 # ----------------------------------------------------------
-Write-Host "[14/14] Docker イメージ内の litellm / telnyx / axios を確認中..." -ForegroundColor Yellow
+Write-Host "[13/13] Docker イメージ内の litellm / telnyx / axios を確認中..." -ForegroundColor Yellow
 
 if ($SkipDocker) {
     Write-Host "  INFO: -SkipDocker が指定されたためスキップします" -ForegroundColor Gray
@@ -647,7 +678,7 @@ if ($SkipDocker) {
 
                     # axios check in Docker
                     try {
-                        $axiosDockerOutput = & docker run --rm --entrypoint "" $imageId cat /app/node_modules/axios/package.json 2>$null
+                        $axiosDockerOutput = & docker run --rm --entrypoint "" $imageId sh -c 'find / -path "*/node_modules/axios/package.json" -type f -exec cat {} \; 2>/dev/null' 2>$null
                         if ($axiosDockerOutput) {
                             $axiosJson = $axiosDockerOutput | Out-String | ConvertFrom-Json
                             $axiosDockerVersion = $axiosJson.version
@@ -733,6 +764,7 @@ if ($found) {
     Write-Host ""
     Write-Host " 10. npm キャッシュをクリアする"                                            -ForegroundColor White
     Write-Host "     npm cache clean --force"                                                -ForegroundColor Gray
+    Write-Host "     bun を使用している場合: bun pm cache rm"                                -ForegroundColor Gray
     Write-Host ""
     exit 1
 }

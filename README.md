@@ -44,7 +44,7 @@ The scripts look for the following indicators:
 - LiteLLM and Telnyx traces inside local Docker images
 - Installed axios packages at version `1.14.1` or `0.30.4` (in `node_modules`)
 - `plain-crypto-js` directories inside `node_modules` (axios compromise indicator)
-- `plain-crypto-js` references in lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`)
+- `plain-crypto-js` references in lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`)
 - axios-specific backdoor files: `com.apple.act.mond` (macOS), `wt.exe` / `6202033.vbs` / `6202033.ps1` (Windows), `ld.py` (Linux)
 
 ## Feature Summary
@@ -55,7 +55,7 @@ The scripts look for the following indicators:
 - Inspects Conda environments when `conda` is available
 - Scans all local Docker images by image ID instead of only images whose name contains `litellm`
 - Scans `node_modules` trees for compromised axios versions and the `plain-crypto-js` malicious dependency
-- Searches lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`) for `plain-crypto-js` references
+- Searches lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`) for `plain-crypto-js` references
 - Checks for platform-specific axios backdoor files
 - Returns a non-zero exit code when suspicious artifacts are found
 
@@ -159,7 +159,7 @@ At a minimum:
 - Downgrade axios to a safe version (`npm install axios@1.14.0` or `axios@0.30.3` for legacy)
 - Remove `plain-crypto-js` directories from `node_modules`
 - Remove axios-specific backdoor files (`com.apple.act.mond`, `wt.exe`, `6202033.vbs`, `6202033.ps1`, `ld.py`)
-- Clear npm cache (`npm cache clean --force`)
+- Clear npm cache (`npm cache clean --force`) and bun cache (`bun pm cache rm`) if applicable
 
 ## Limitations
 
