@@ -1,10 +1,12 @@
 # ============================================================
-# LiteLLM / Telnyx サプライチェーン攻撃 チェックスクリプト (Windows / PowerShell)
+# LiteLLM / Telnyx / axios サプライチェーン攻撃 チェックスクリプト (Windows / PowerShell)
 # 対象: litellm v1.82.7 / v1.82.8 (2026-03-24 公開、TeamPCP による侵害)
 #       telnyx  v4.87.1 / v4.87.2 (2026-03-27 公開、TeamPCP による侵害)
+#       axios   v1.14.1 / v0.30.4 (2026-03-31 公開、npm アカウント侵害)
 # 参考: https://docs.litellm.ai/blog/security-update-march-2026
 #       https://futuresearch.ai/blog/litellm-pypi-supply-chain-attack/
 #       https://futuresearch.ai/blog/telnyx-compromise/
+#       https://blog.flatt.tech/entry/axios_compromise
 #
 # 使い方:
 #   .\check_compromised_packages_win.ps1                                    # 既定の共通インストール先をスキャン
@@ -76,6 +78,13 @@ function Test-BadLitellmVersion {
 function Test-BadTelnyxVersion {
     param([string]$Version)
     return $Version -in $BAD_TELNYX_VERSIONS
+}
+
+$BAD_AXIOS_VERSIONS = @("1.14.1", "0.30.4")
+
+function Test-BadAxiosVersion {
+    param([string]$Version)
+    return $Version -in $BAD_AXIOS_VERSIONS
 }
 
 function Show-InstalledVersion {
@@ -176,7 +185,7 @@ if (-not $ScanDirs -or $ScanDirs.Count -eq 0) {
 
 Write-Host ""
 Write-Host "=================================================" -ForegroundColor Cyan
-Write-Host " LiteLLM / Telnyx 侵害チェック (Windows)"        -ForegroundColor Cyan
+Write-Host " LiteLLM / Telnyx / axios 侵害チェック (Windows)"        -ForegroundColor Cyan
 Write-Host "=================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -190,7 +199,7 @@ Write-Host ""
 # ----------------------------------------------------------
 # 1. 現在アクティブな環境の litellm バージョン確認
 # ----------------------------------------------------------
-Write-Host "[1/9] アクティブ環境の litellm / telnyx バージョンを確認中..." -ForegroundColor Yellow
+Write-Host "[1/14] アクティブ環境の litellm / telnyx バージョンを確認中..." -ForegroundColor Yellow
 
 if (Get-Command pip -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "litellm" -Label "pip" -CommandParts @("pip") }
 if (Get-Command pip3 -ErrorAction SilentlyContinue) { Show-InstalledVersion -PackageName "litellm" -Label "pip3" -CommandParts @("pip3") }
@@ -214,7 +223,7 @@ if (-not $telnyxActiveChecked) {
 # ----------------------------------------------------------
 # 2. 仮想環境を横断して litellm の全インストール箇所を一覧表示
 # ----------------------------------------------------------
-Write-Host "[2/9] 仮想環境内の litellm / telnyx を横断検索中..." -ForegroundColor Yellow
+Write-Host "[2/14] 仮想環境内の litellm / telnyx を横断検索中..." -ForegroundColor Yellow
 Write-Host "  （ディスク容量によっては数分かかります）" -ForegroundColor Gray
 
 $litellmVenvCount = 0
@@ -272,7 +281,7 @@ if ($telnyxVenvCount -eq 0) {
 # ----------------------------------------------------------
 # 3. litellm_init.pth を横断検索
 # ----------------------------------------------------------
-Write-Host "[3/9] litellm_init.pth を横断検索中..." -ForegroundColor Yellow
+Write-Host "[3/14] litellm_init.pth を横断検索中..." -ForegroundColor Yellow
 
 $pthFiles = @()
 foreach ($scanDir in $ScanDirs) {
@@ -292,7 +301,7 @@ if ($pthFiles.Count -gt 0) {
 # ----------------------------------------------------------
 # 4. 永続化バックドア (sysmon.py)
 # ----------------------------------------------------------
-Write-Host "[4/9] 永続化バックドア (sysmon.py) を確認中..." -ForegroundColor Yellow
+Write-Host "[4/14] 永続化バックドア (sysmon.py) を確認中..." -ForegroundColor Yellow
 
 $sysmonPath = Join-OptionalPath -BasePath $env:USERPROFILE -ChildPath ".config\sysmon\sysmon.py"
 if ($sysmonPath -and (Test-Path -LiteralPath $sysmonPath)) {
@@ -305,7 +314,7 @@ if ($sysmonPath -and (Test-Path -LiteralPath $sysmonPath)) {
 # ----------------------------------------------------------
 # 5. telnyx 永続化バックドア (msbuild.exe) - Windows 固有
 # ----------------------------------------------------------
-Write-Host "[5/9] telnyx 永続化バックドア (msbuild.exe) を確認中..." -ForegroundColor Yellow
+Write-Host "[5/14] telnyx 永続化バックドア (msbuild.exe) を確認中..." -ForegroundColor Yellow
 
 $startupFolder = Join-OptionalPath -BasePath $env:APPDATA -ChildPath "Microsoft\Windows\Start Menu\Programs\Startup"
 $msbuildExe = if ($startupFolder) { Join-Path $startupFolder "msbuild.exe" } else { $null }
@@ -330,7 +339,7 @@ if (-not $msbuildFound) {
 # ----------------------------------------------------------
 # 6. conda 環境のチェック
 # ----------------------------------------------------------
-Write-Host "[6/9] conda 環境を確認中..." -ForegroundColor Yellow
+Write-Host "[6/14] conda 環境を確認中..." -ForegroundColor Yellow
 
 try {
     $condaInfo = & conda info --envs 2>$null
@@ -392,7 +401,7 @@ try {
 # ----------------------------------------------------------
 # 7. uv キャッシュ
 # ----------------------------------------------------------
-Write-Host "[7/9] uv キャッシュ内を検索中..." -ForegroundColor Yellow
+Write-Host "[7/14] uv キャッシュ内を検索中..." -ForegroundColor Yellow
 
 $uvCacheBase = Join-OptionalPath -BasePath $env:LOCALAPPDATA -ChildPath "uv\cache"
 if ($uvCacheBase -and (Test-Path -LiteralPath $uvCacheBase)) {
@@ -433,7 +442,7 @@ if ($uvCacheBase -and (Test-Path -LiteralPath $uvCacheBase)) {
 # ----------------------------------------------------------
 # 8. pip キャッシュ
 # ----------------------------------------------------------
-Write-Host "[8/9] pip キャッシュ内を検索中..." -ForegroundColor Yellow
+Write-Host "[8/14] pip キャッシュ内を検索中..." -ForegroundColor Yellow
 
 $pipCacheBase = Join-OptionalPath -BasePath $env:LOCALAPPDATA -ChildPath "pip\Cache"
 if ($pipCacheBase -and (Test-Path -LiteralPath $pipCacheBase)) {
@@ -472,9 +481,118 @@ if ($pipCacheBase -and (Test-Path -LiteralPath $pipCacheBase)) {
 }
 
 # ----------------------------------------------------------
-# 9. Docker イメージのチェック
+# 10. axios バックドアファイルの確認 (Windows)
 # ----------------------------------------------------------
-Write-Host "[9/9] Docker イメージ内の litellm / telnyx を確認中..." -ForegroundColor Yellow
+Write-Host "[10/14] axios バックドアファイルを確認中..." -ForegroundColor Yellow
+
+$axiosBackdoorFound = $false
+
+$axiosWtExe = Join-OptionalPath -BasePath $env:ProgramData -ChildPath "wt.exe"
+if ($axiosWtExe -and (Test-Path -LiteralPath $axiosWtExe)) {
+    Write-Host "  !! 危険: $axiosWtExe (axios バックドア: Windows Terminal に偽装)" -ForegroundColor Red
+    $axiosBackdoorFound = $true
+    $found = $true
+}
+
+$axiosVbs = Join-OptionalPath -BasePath $env:TEMP -ChildPath "6202033.vbs"
+if ($axiosVbs -and (Test-Path -LiteralPath $axiosVbs)) {
+    Write-Host "  !! 危険: $axiosVbs (axios VBScript ローダー)" -ForegroundColor Red
+    $axiosBackdoorFound = $true
+    $found = $true
+}
+
+$axiosPs1 = Join-OptionalPath -BasePath $env:TEMP -ChildPath "6202033.ps1"
+if ($axiosPs1 -and (Test-Path -LiteralPath $axiosPs1)) {
+    Write-Host "  !! 危険: $axiosPs1 (axios PowerShell RAT)" -ForegroundColor Red
+    $axiosBackdoorFound = $true
+    $found = $true
+}
+
+if (-not $axiosBackdoorFound) {
+    Write-Host "  OK: axios バックドアファイルは見つかりませんでした" -ForegroundColor Green
+}
+
+# ----------------------------------------------------------
+# 11. node_modules 内の plain-crypto-js を検索
+# ----------------------------------------------------------
+Write-Host "[11/14] node_modules 内の plain-crypto-js を検索中..." -ForegroundColor Yellow
+Write-Host "  （ディスク容量によっては数分かかります）" -ForegroundColor Gray
+
+$plainCryptoFound = $false
+foreach ($scanDir in $ScanDirs) {
+    if (-not (Test-Path -LiteralPath $scanDir)) { continue }
+    $cryptoDirs = Get-ChildItem -Path $scanDir -Recurse -Directory -Filter "plain-crypto-js" -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match "node_modules" }
+    foreach ($dir in $cryptoDirs) {
+        Write-Host "  !! 危険: plain-crypto-js ディレクトリ検出 (axios 感染の痕跡): $($dir.FullName)" -ForegroundColor Red
+        $plainCryptoFound = $true
+        $found = $true
+    }
+}
+
+if (-not $plainCryptoFound) {
+    Write-Host "  OK: plain-crypto-js は見つかりませんでした" -ForegroundColor Green
+}
+
+# ----------------------------------------------------------
+# 12. node_modules 内の侵害版 axios を検索
+# ----------------------------------------------------------
+Write-Host "[12/14] node_modules 内の axios バージョンを確認中..." -ForegroundColor Yellow
+
+$axiosVersionCount = 0
+foreach ($scanDir in $ScanDirs) {
+    if (-not (Test-Path -LiteralPath $scanDir)) { continue }
+    $axiosPkgJsons = Get-ChildItem -Path $scanDir -Recurse -Filter "package.json" -ErrorAction SilentlyContinue |
+        Where-Object { $_.DirectoryName -match "[/\\]node_modules[/\\]axios$" }
+    foreach ($pkgJson in $axiosPkgJsons) {
+        $axiosVersionCount++
+        try {
+            $jsonContent = Get-Content $pkgJson.FullName -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
+            $version = $jsonContent.version
+            if (Test-BadAxiosVersion $version) {
+                Write-Host "  !! 危険: axios $version @ $($pkgJson.DirectoryName)" -ForegroundColor Red
+                $found = $true
+            } elseif ($version) {
+                Write-Host "  OK: axios $version @ $($pkgJson.DirectoryName)" -ForegroundColor DarkGreen
+            }
+        } catch {}
+    }
+}
+
+if ($axiosVersionCount -eq 0) {
+    Write-Host "  INFO: スキャン範囲内に axios は見つかりませんでした" -ForegroundColor Gray
+}
+
+# ----------------------------------------------------------
+# 13. lockfile 内の plain-crypto-js を検索
+# ----------------------------------------------------------
+Write-Host "[13/14] lockfile 内の plain-crypto-js を検索中..." -ForegroundColor Yellow
+
+$lockfileHit = $false
+foreach ($scanDir in $ScanDirs) {
+    if (-not (Test-Path -LiteralPath $scanDir)) { continue }
+    $lockfiles = Get-ChildItem -Path $scanDir -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -in @("package-lock.json", "yarn.lock", "pnpm-lock.yaml") }
+    foreach ($lockfile in $lockfiles) {
+        try {
+            $content = Get-Content $lockfile.FullName -Raw -ErrorAction SilentlyContinue
+            if ($content -match "plain-crypto-js") {
+                Write-Host "  !! 危険: plain-crypto-js が lockfile に記録されています: $($lockfile.FullName)" -ForegroundColor Red
+                $lockfileHit = $true
+                $found = $true
+            }
+        } catch {}
+    }
+}
+
+if (-not $lockfileHit) {
+    Write-Host "  OK: lockfile に plain-crypto-js は見つかりませんでした" -ForegroundColor Green
+}
+
+# ----------------------------------------------------------
+# 14. Docker イメージのチェック
+# ----------------------------------------------------------
+Write-Host "[14/14] Docker イメージ内の litellm / telnyx / axios を確認中..." -ForegroundColor Yellow
 
 if ($SkipDocker) {
     Write-Host "  INFO: -SkipDocker が指定されたためスキップします" -ForegroundColor Gray
@@ -526,6 +644,32 @@ if ($SkipDocker) {
                         }
                         $found = $true
                     }
+
+                    # axios check in Docker
+                    try {
+                        $axiosDockerOutput = & docker run --rm --entrypoint "" $imageId cat /app/node_modules/axios/package.json 2>$null
+                        if ($axiosDockerOutput) {
+                            $axiosJson = $axiosDockerOutput | Out-String | ConvertFrom-Json
+                            $axiosDockerVersion = $axiosJson.version
+                            if (Test-BadAxiosVersion $axiosDockerVersion) {
+                                Write-Host "  !! 危険: axios $axiosDockerVersion @ Docker イメージ $displayName" -ForegroundColor Red
+                                $found = $true
+                            } elseif ($axiosDockerVersion) {
+                                Write-Host "  OK: axios $axiosDockerVersion @ Docker イメージ $displayName" -ForegroundColor DarkGreen
+                            }
+                        }
+                    } catch {}
+
+                    try {
+                        $plainCryptoDocker = & docker run --rm --entrypoint "" $imageId find / -type d -name "plain-crypto-js" -path "*/node_modules/*" 2>$null
+                        if ($plainCryptoDocker) {
+                            Write-Host "  !! 危険: plain-crypto-js @ Docker イメージ $displayName" -ForegroundColor Red
+                            foreach ($pathValue in $plainCryptoDocker) {
+                                Write-Host "     $pathValue" -ForegroundColor Red
+                            }
+                            $found = $true
+                        }
+                    } catch {}
                 }
             } else {
                 Write-Host "  INFO: ローカル Docker イメージはありません" -ForegroundColor Gray
@@ -574,6 +718,21 @@ if ($found) {
     Write-Host "  6. このマシン上のすべての認証情報を侵害されたものとして扱う"       -ForegroundColor White
     Write-Host "     SSH鍵、AWSアクセスキー、Azureトークン、GCP ADC、"               -ForegroundColor Gray
     Write-Host "     .env内のAPIキー、Kubernetesコンフィグ等をすべてローテーション"   -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  7. axios が検出された場合、安全なバージョンにダウングレードする"       -ForegroundColor White
+    Write-Host "     npm install axios@1.14.0"                                              -ForegroundColor Gray
+    Write-Host "     レガシー利用の場合は axios@0.30.3"                                     -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  8. plain-crypto-js ディレクトリを削除する"                                -ForegroundColor White
+    Write-Host "     node_modules 内の plain-crypto-js フォルダを手動で削除"                 -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  9. axios バックドアファイルを削除する"                                    -ForegroundColor White
+    Write-Host "     del `"$axiosWtExe`""                                                   -ForegroundColor Gray
+    Write-Host "     del `"$axiosVbs`""                                                     -ForegroundColor Gray
+    Write-Host "     del `"$axiosPs1`""                                                     -ForegroundColor Gray
+    Write-Host ""
+    Write-Host " 10. npm キャッシュをクリアする"                                            -ForegroundColor White
+    Write-Host "     npm cache clean --force"                                                -ForegroundColor Gray
     Write-Host ""
     exit 1
 }

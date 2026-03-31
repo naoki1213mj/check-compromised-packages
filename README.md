@@ -3,10 +3,11 @@
 English README (authoritative): this file  
 Japanese README (reference translation): [README.ja.md](README.ja.md)
 
-`check-litellm` provides two local inspection scripts for identifying traces associated with the following compromised PyPI packages, publicly disclosed in March 2026 by the threat actor **TeamPCP**:
+`check-litellm` provides two local inspection scripts for identifying traces associated with the following compromised packages, publicly disclosed in March 2026:
 
-- **LiteLLM** `1.82.7` / `1.82.8` (disclosed March 24, 2026)
-- **Telnyx** `4.87.1` / `4.87.2` (disclosed March 27, 2026)
+- **LiteLLM** `1.82.7` / `1.82.8` (PyPI, disclosed March 24, 2026 — threat actor **TeamPCP**)
+- **Telnyx** `4.87.1` / `4.87.2` (PyPI, disclosed March 27, 2026 — threat actor **TeamPCP**)
+- **axios** `1.14.1` / `0.30.4` (npm, disclosed March 31, 2026 — npm account compromise)
 
 Scripts:
 
@@ -18,6 +19,7 @@ References:
 - LiteLLM security update: <https://docs.litellm.ai/blog/security-update-march-2026>
 - FutureSearch LiteLLM analysis: <https://futuresearch.ai/blog/litellm-pypi-supply-chain-attack/>
 - FutureSearch Telnyx analysis: <https://futuresearch.ai/blog/telnyx-compromise/>
+- Flatt Security axios analysis: <https://blog.flatt.tech/entry/axios_compromise>
 
 ## Disclaimer
 
@@ -40,6 +42,10 @@ The scripts look for the following indicators:
 - LiteLLM- and Telnyx-related artifacts in `pip` and `uv` caches
 - LiteLLM and Telnyx installations inside Conda environments
 - LiteLLM and Telnyx traces inside local Docker images
+- Installed axios packages at version `1.14.1` or `0.30.4` (in `node_modules`)
+- `plain-crypto-js` directories inside `node_modules` (axios compromise indicator)
+- `plain-crypto-js` references in lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`)
+- axios-specific backdoor files: `com.apple.act.mond` (macOS), `wt.exe` / `6202033.vbs` / `6202033.ps1` (Windows), `ld.py` (Linux)
 
 ## Feature Summary
 
@@ -48,6 +54,9 @@ The scripts look for the following indicators:
 - Searches for persistence files and cache artifacts (including Telnyx-specific `msbuild.exe` on Windows)
 - Inspects Conda environments when `conda` is available
 - Scans all local Docker images by image ID instead of only images whose name contains `litellm`
+- Scans `node_modules` trees for compromised axios versions and the `plain-crypto-js` malicious dependency
+- Searches lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`) for `plain-crypto-js` references
+- Checks for platform-specific axios backdoor files
 - Returns a non-zero exit code when suspicious artifacts are found
 
 ## Repository Contents
@@ -125,8 +134,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ## Exit Codes
 
-- `0`: no suspicious LiteLLM or Telnyx artifacts were detected
-- `1`: suspicious LiteLLM or Telnyx artifacts were detected
+- `0`: no suspicious artifacts were detected
+- `1`: suspicious artifacts were detected
 
 These exit codes are intended to make the scripts usable in RMM tooling, CI checks, Intune workflows, or other automation.
 
@@ -147,6 +156,10 @@ At a minimum:
 - Clear `pip` and `uv` caches
 - Rebuild affected Docker images
 - Rotate credentials, tokens, keys, and other secrets that may have been exposed
+- Downgrade axios to a safe version (`npm install axios@1.14.0` or `axios@0.30.3` for legacy)
+- Remove `plain-crypto-js` directories from `node_modules`
+- Remove axios-specific backdoor files (`com.apple.act.mond`, `wt.exe`, `6202033.vbs`, `6202033.ps1`, `ld.py`)
+- Clear npm cache (`npm cache clean --force`)
 
 ## Limitations
 

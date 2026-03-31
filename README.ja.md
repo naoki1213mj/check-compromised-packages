@@ -2,10 +2,11 @@
 
 日本語 README（参考訳）です。正本は英語版の [README.md](README.md) です。内容に差異がある場合は英語版を優先してください。
 
-`check-litellm` は、脅威アクタ **TeamPCP** により侵害された以下の PyPI パッケージの痕跡をローカル環境で確認するためのスクリプト集です。
+`check-litellm` は、2026 年 3 月に公表された以下の侵害パッケージの痕跡をローカル環境で確認するためのスクリプト集です。
 
-- **LiteLLM** `1.82.7` / `1.82.8`（2026 年 3 月 24 日公表）
-- **Telnyx** `4.87.1` / `4.87.2`（2026 年 3 月 27 日公表）
+- **LiteLLM** `1.82.7` / `1.82.8`（PyPI、2026 年 3 月 24 日公表 — 脅威アクタ **TeamPCP**）
+- **Telnyx** `4.87.1` / `4.87.2`（PyPI、2026 年 3 月 27 日公表 — 脅威アクタ **TeamPCP**）
+- **axios** `1.14.1` / `0.30.4`（npm、2026 年 3 月 31 日公表 — npm アカウント侵害）
 
 スクリプト:
 
@@ -17,6 +18,7 @@
 - LiteLLM 公式セキュリティ更新: <https://docs.litellm.ai/blog/security-update-march-2026>
 - FutureSearch の LiteLLM 分析: <https://futuresearch.ai/blog/litellm-pypi-supply-chain-attack/>
 - FutureSearch の Telnyx 分析: <https://futuresearch.ai/blog/telnyx-compromise/>
+- Flatt Security の axios 分析: <https://blog.flatt.tech/entry/axios_compromise>
 
 ## 免責事項
 
@@ -39,6 +41,10 @@
 - `pip` / `uv` キャッシュ内の痕跡
 - Conda 環境内の LiteLLM / Telnyx
 - ローカル Docker イメージ内の LiteLLM / Telnyx 関連痕跡
+- `axios@1.14.1` / `axios@0.30.4` の有無（`node_modules` 内）
+- `node_modules` 内の `plain-crypto-js` ディレクトリ（axios 侵害の痕跡）
+- lockfile（`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`）内の `plain-crypto-js`
+- axios 固有バックドアファイル: `com.apple.act.mond`（macOS）、`wt.exe` / `6202033.vbs` / `6202033.ps1`（Windows）、`ld.py`（Linux）
 
 ## 主な機能
 
@@ -47,6 +53,9 @@
 - 永続化ファイルやキャッシュ痕跡の検索（Windows での Telnyx 固有の `msbuild.exe` を含む）
 - `conda` 利用時の環境横断チェック
 - イメージ名に `litellm` を含むかどうかではなく、ローカル Docker イメージ全体を対象にした検査
+- `node_modules` 配下の侵害版 axios および悪性依存 `plain-crypto-js` の走査
+- lockfile（`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`）内の `plain-crypto-js` 検索
+- プラットフォーム固有の axios バックドアファイルの確認
 - 検知時に `exit 1` を返すため、自動化に組み込みやすい
 
 ## リポジトリ構成
@@ -146,6 +155,10 @@ RMM、Intune、CI、定期点検ジョブなどに組み込むことを想定し
 - `pip` / `uv` キャッシュを削除する
 - 該当 Docker イメージを再ビルドする
 - 露出した可能性のある認証情報、トークン、鍵、シークレットをローテーションする
+- axios を安全なバージョンにダウングレードする（`npm install axios@1.14.0`、レガシーは `axios@0.30.3`）
+- `node_modules` 内の `plain-crypto-js` ディレクトリを削除する
+- axios 固有バックドアファイルを削除する（`com.apple.act.mond`、`wt.exe`、`6202033.vbs`、`6202033.ps1`、`ld.py`）
+- npm キャッシュをクリアする（`npm cache clean --force`）
 
 ## 制限事項
 
